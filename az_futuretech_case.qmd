@@ -1,0 +1,10 @@
+---
+title: "FutureTech Sales Acceleration Analytics Case"
+format:
+  dashboard
+---
+
+```{r}
+
+```
+
