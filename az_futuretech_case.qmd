@@ -1,10 +1,75 @@
 ---
 title: "FutureTech Sales Acceleration Analytics Case"
 format:
-  dashboard
+  dashboard:
+    nav-buttons: [github]
+    github: https://github.com/pmmagusiak/az_futuretech_case
+server: shiny
 ---
 
 ```{r}
+#| label: load-packages
+#| context: setup
+#| message: false
 
+library(tidyverse)
+library(data.table)
+library(skimr)
+library(shiny)
+```
+
+```{r}
+#| label: load-data
+#| context: setup
+#| message: false
+
+# Importing files into R environment
+
+outreaches <- fread("data/contact_summary.csv")
+
+sales <- fread("data/sales_summary.csv")
+```
+
+```{r}
+#| label: initial-prep-data
+#| context: setup
+#| include: false
+#| message: false
+
+## Focusing on outreaches database
+
+skim_without_charts(outreaches) # Using skimr package to summary data tables and overview missing values, duplicates and other information
+
+outreaches |> filter(if_any(everything(), is.null)) # Checking if there are any rows with null values, as skimr does not assess that
+
+outreaches |> 
+  arrange(date) |> 
+  group_by(shop, Product) |> 
+  mutate(start_date = date, end_date = lead(date) - days(1)) |>
+  filter(end_date < start_date) |> 
+   View() # There are 10 
+  
+
+
+## Focusing on sales database, initial procedures the same as above
+
+skim_without_charts(sales)
+
+sales |> filter(if_any(everything(), is.null))
+
+## Joining the dbases
+
+futuretech <- outreaches |> 
+  inner_join(sales, join_by(shop, Product), suffix = c("_of_contact", "_of_sell"), relationship = "many-to-many") |> # joining variables are shop and product, as there are the same amount of n_unique shop ids and product names in both dbases and shops are in center of my analysis; join type does not matter right now because of many-to-many relationship
+  select(-location) # location column is not needed for my analysis
+
+```
+
+```{r}
+#| label: data-analysis
+#| context: setup
+#| include: false
+#| message: false
+  
 ```
 
