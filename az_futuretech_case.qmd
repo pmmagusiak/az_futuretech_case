@@ -13,7 +13,6 @@ server: shiny
 #| message: false
 
 library(tidyverse)
-library(data.table)
 library(skimr)
 library(shiny)
 ```
@@ -25,9 +24,9 @@ library(shiny)
 
 # Importing files into R environment
 
-outreaches <- fread("data/contact_summary.csv")
+outreaches <- read_csv("data/contact_summary.csv")
 
-sales <- fread("data/sales_summary.csv")
+sales <- read_csv("data/sales_summary.csv")
 ```
 
 ```{r}
@@ -43,26 +42,42 @@ skim_without_charts(outreaches) # Using skimr package to summary data tables and
 outreaches |> filter(if_any(everything(), is.null)) # Checking if there are any rows with null values, as skimr does not assess that
 
 outreaches |> 
+  count(shop, Product, date) |> 
+  filter(n > 1) # There were cases of more than 1 contact per day
+  
+outreaches_processed <- outreaches |>
+  group_by(shop, Product, date) |> 
+  mutate(contact_count = n()) |> # Column with a number of contacts per date
+  ungroup() |> 
   arrange(date) |> 
   group_by(shop, Product) |> 
-  mutate(start_date = date, end_date = lead(date) - days(1)) |>
-  filter(end_date < start_date) |> 
-   View() # There are 10 
+  mutate(first_contact = min(date), contact_window_start = date, contact_window_end = lead(date) - days(1)) |> # As there are sales that took place before first contact, a first contact column may prove useful
+  mutate(contact_window_end = case_when(is.na(contact_window_end) ~ today(), TRUE ~ contact_window_end)) # Creating contact windows columns is crucial for further sales analysis
   
-
-
 ## Focusing on sales database, initial procedures the same as above
 
 skim_without_charts(sales)
 
 sales |> filter(if_any(everything(), is.null))
 
-## Joining the dbases
+## Joining 
 
-futuretech <- outreaches |> 
-  inner_join(sales, join_by(shop, Product), suffix = c("_of_contact", "_of_sell"), relationship = "many-to-many") |> # joining variables are shop and product, as there are the same amount of n_unique shop ids and product names in both dbases and shops are in center of my analysis; join type does not matter right now because of many-to-many relationship
-  select(-location) # location column is not needed for my analysis
+sales_before_first_contact <- sales |> 
+  inner_join(outreaches_processed, join_by(shop, Product), suffix = c("_of_sell", "_of_previous_contact"), relationship = "many-to-many") |> 
+  group_by(shop, Product) |> 
+  filter(date_of_sell < first_contact & contact_window_start == first_contact) |> 
+  mutate(date_of_previous_contact = NA_Date_, contact_window_start = NA_Date_, contact_window_end = NA_Date_, trigger = NA) # There were 408 cases of items sold before first contact
 
+sales_within_contact_window <- sales |> 
+  inner_join(outreaches_processed, join_by(shop, Product), suffix = c("_of_sell", "_of_previous_contact"), relationship = "many-to-many") |> 
+  group_by(shop, Product) |> 
+  filter(date_of_sell >= contact_window_start & date_of_sell <= contact_window_end)  # Joining variables are shop and product, as there are the same amount of n_unique shop ids and product names in both dbases and shops are in center of my analysis; join type does not matter right now because of many-to-many relationship
+  
+futuretech <- sales_within_contact_window |> 
+  bind_rows(sales_before_first_contact) |> 
+  select(shop, product = Product, date_of_sell, units_sold, date_of_previous_contact, contact_count, first_contact, trigger) # Final database after wrangling and column tidying
+
+# My final database has about 60 observations less than raw database because it does not contain information about outreaches that took place after the last sell
 ```
 
 ```{r}
@@ -70,6 +85,5 @@ futuretech <- outreaches |>
 #| context: setup
 #| include: false
 #| message: false
-  
 ```
 
