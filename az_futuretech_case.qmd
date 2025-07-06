@@ -85,5 +85,86 @@ futuretech <- sales_within_contact_window |>
 #| context: setup
 #| include: false
 #| message: false
+
+futuretech_campaign_analysis <- futuretech |> 
+  group_by(shop, trigger) |> 
+  summarize(campaign_shop_sales = sum(units_sold), .groups = "drop") |> 
+  group_by(trigger) |> 
+  summarize(avg_campaign_shop_sales = mean(campaign_shop_sales), sd_campaign_shop_sales = sd(campaign_shop_sales), .groups = "drop")
+
+
+ggplot(futuretech_campaign_analysis, aes(x = reorder(trigger, avg_sales_during_campaign), y = avg_sales_during_campaign, fill = trigger)) +
+  geom_col() +
+  geom_errorbar(aes(ymin = avg_sales_during_campaign - sd_sales_during_campaign, ymax = avg_sales_during_campaign + sd_sales_during_campaign), width = 0.2) +
+  labs(title = "Average Sales per Shop by Outreach Strategy") +
+  coord_flip()
+
+hist <- futuretech |>
+  group_by(shop) |> 
+  summarize(shop_sales_total = sum(units_sold)) |> 
+  ggplot(aes(shop_sales_total)) +
+  geom_histogram(binwidth = 1) +
+  geom_vline(
+    aes(xintercept = mean(shop_sales_total)),
+    color = "red",
+    linetype = "dashed",
+    linewidth = 1
+  ) +
+  labs(
+    title = "Distribution of Items Sold with Mean Line",
+    x = "Items Sold",
+    y = "Count"
+  ) +
+  theme_minimal() # Histogram of sales, very useful for choosing inputs on slider, mean is 8.49
+
+# zastrzeżenie że też przed oknem marketingowym te rzeczy, mozesz zrobic disclaimer
+
+futuretech |> 
+  group_by(product, units_sold) |> 
+  count() |> 
+  summarize(total_products = units_sold * n, .groups = "drop") |> 
+  group_by(product) |> 
+  summarize(total = sum(total_products))
+
+successful <- futuretech |> 
+  group_by(shop) |> 
+  filter(sum(units_sold) > 16)
+  
+successful |> 
+  group_by(product) |> 
+  count()
+
+successful |> 
+  group_by(shop, trigger) |> 
+  summarize(total_shop_sales_during_campaign = sum(units_sold), .groups = "drop") |> 
+  group_by(trigger) |> 
+  summarize(avg_sales_during_campaign = mean(total_shop_sales_during_campaign), sd_sales_during_campaign = sd(total_shop_sales_during_campaign), .groups = "drop") |> 
+  ggplot(aes(x = reorder(trigger, avg_sales_during_campaign), y = avg_sales_during_campaign, fill = trigger)) +
+  geom_col() +
+  geom_errorbar(aes(ymin = avg_sales_during_campaign - sd_sales_during_campaign, ymax = avg_sales_during_campaign + sd_sales_during_campaign), width = 0.2) +
+  labs(title = "Average Sales per Shop by Outreach Strategy") +
+  coord_flip()
 ```
 
+```{r}
+#| label: data-visualisation
+#| context: setup
+#| include: false
+#| message: false
+```
+
+# Plots
+
+## Sidebar {.sidebar}
+
+```{r}
+sliderInput("items", "Filter shops by sales volume:", min = 1, max = 46, value = c(1, 46))
+```
+
+## Main Body
+
+### Value boxes {height="20%"}
+
+### Row {height="80%"}
+
+# Data
