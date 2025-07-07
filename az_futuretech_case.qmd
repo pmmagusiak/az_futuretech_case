@@ -14,6 +14,7 @@ server: shiny
 
 library(tidyverse)
 library(skimr)
+library(bslib)
 library(ggimage)
 library(shiny)
 ```
@@ -77,80 +78,10 @@ sales_within_contact_window <- sales |>
 futuretech <- sales_within_contact_window |> 
   bind_rows(sales_before_first_contact) |> 
   select(shop, product = Product, date_of_sell, units_sold, date_of_previous_contact, contact_count, first_contact, trigger) |> 
+  mutate(product = factor(product)) |> 
   mutate(image_url = case_when(product == "Badge of Courage" ~ "images/badge_of_courage.png", product == "Boots of Levitation" ~ "images/boots_of_levitation .png", product == "Cape of Velocity" ~ "images/cape_of_velocity.png", product == "Cloak of the Undead King" ~ "images/cloak_of_the_undead_king.png", product == "Elixir of Life" ~ "images/elixir_of_life.png", TRUE ~ "images/lions_shield_of_courage.png")) # Final database after wrangling, column tidying and adding images url
 
 # My final database has about 60 observations less than raw database because it does not contain information about outreaches that took place after the last sell
-```
-
-```{r}
-#| label: data-analysis
-#| context: setup
-#| include: false
-#| message: false
-
-mean_items_sold <- futuretech |> # Needed later on
-  group_by(shop) |> 
-  summarize(sum = sum(units_sold)) |> 
-  pull(sum) |> 
-  mean() 
-
-futuretech |> 
-  group_by(product, units_sold) |> 
-  count() |> 
-  summarize(total_products = units_sold * n, .groups = "drop") |> 
-  group_by(product) |> 
-  summarize(total = sum(total_products))
-
-futuretech |> 
-  group_by(product) |> 
-  summarize(sum = sum(units_sold))
-
-successful <- futuretech |> 
-  group_by(shop) |> 
-  filter(sum(units_sold) > 16)
-  
-successful |> 
-  group_by(product) |> 
-  count()
-
-successful |> 
-  group_by(shop, trigger) |> 
-  summarize(total_shop_sales_during_campaign = sum(units_sold), .groups = "drop") |> 
-  group_by(trigger) |> 
-  summarize(avg_sales_during_campaign = mean(total_shop_sales_during_campaign), sd_sales_during_campaign = sd(total_shop_sales_during_campaign), .groups = "drop") |> 
-  ggplot(aes(x = reorder(trigger, avg_sales_during_campaign), y = avg_sales_during_campaign, fill = trigger)) +
-  geom_col() +
-  geom_errorbar(aes(ymin = avg_sales_during_campaign - sd_sales_during_campaign, ymax = avg_sales_during_campaign + sd_sales_during_campaign), width = 0.2) +
-  labs(title = "Average Sales per Shop by Outreach Strategy") +
-  coord_flip()
-
-
-
-
-
-
-futuretech_campaign_analysis <- futuretech |> 
-  group_by(shop, trigger) |> 
-  summarize(campaign_shop_sales = sum(units_sold), .groups = "drop") |> 
-  group_by(trigger) |> 
-  summarize(avg_campaign_shop_sales = mean(campaign_shop_sales), sd_campaign_shop_sales = sd(campaign_shop_sales), .groups = "drop")
-
-
-ggplot(futuretech_campaign_analysis, aes(x = reorder(trigger, avg_sales_during_campaign), y = avg_sales_during_campaign, fill = trigger)) +
-  geom_col() +
-  geom_errorbar(aes(ymin = avg_sales_during_campaign - sd_sales_during_campaign, ymax = avg_sales_during_campaign + sd_sales_during_campaign), width = 0.2) +
-  labs(title = "Average Sales per Shop by Outreach Strategy") +
-  coord_flip()
-
-
-
-```
-
-```{r}
-#| label: data-visualisation
-#| context: setup
-#| include: false
-#| message: false
 ```
 
 # Plots
@@ -158,10 +89,35 @@ ggplot(futuretech_campaign_analysis, aes(x = reorder(trigger, avg_sales_during_c
 # {.sidebar}
 
 ```{r}
-sliderInput("items", "Filter shops by sales volume:", min = 1, max = 46, value = c(1, 46))
+sliderInput("sales_range", "Filter shops by sales volume:", min = 1, max = 46, value = c(1, 46))
 ```
 
 ## Value boxes {height="20%"}
+
+```{r}
+value_box(
+  title = "Mean number of items sold by a shop",
+  value = mean_items_sold,
+  theme = "teal"
+)
+```
+
+```{r}
+value_box(
+  title = "Total items sold overall",
+  value = 1324,
+  theme = "teal"
+)
+```
+
+```{r}
+value_box(
+  title = "Most popular product",
+  value = "Cloak of the Undead King: 501 items sold",
+  showcase = tags$img(src = "images/cloak_of_the_undead_king.png", height = "60px"),
+  theme = "teal"
+)
+```
 
 ## Plots {height="80%"}
 
@@ -169,6 +125,13 @@ sliderInput("items", "Filter shops by sales volume:", min = 1, max = 46, value =
 
 ```{r}
 #| title: Working title
+#| context: setup
+
+mean_items_sold <- futuretech |>
+  group_by(shop) |> 
+  summarize(sum = sum(units_sold)) |> 
+  pull(sum) |> 
+  mean() 
 
 futuretech |>
   group_by(shop) |> 
@@ -202,27 +165,55 @@ futuretech |>
 
 ```{r}
 #| title: Working title
+
+plotOutput("lollipop")
 ```
 
 ### 2nd row of plots
 
 ```{r}
 #| title: Working title
+
+plotOutput("campaign")
 ```
 
-# Data
-
 ```{r}
-filtered_data <- reactive({
-  df %>% filter(units_sold >= input$min_sales)
+#| context: server
+
+# Basic filtering logic
+
+futuretech_filtered <- reactive({
+  futuretech |>
+    group_by(shop) |> 
+    filter(sum(units_sold) >= input$sales_range[1] & sum(units_sold) <= input$sales_range[2]) |> 
+    ungroup()
 })
 
-output$lollipopPlot <- renderPlot({
-  ggplot(filtered_data(), aes(x = reorder(product, units_sold), y = units_sold)) +
-    geom_segment(aes(xend = product, y = 0, yend = units_sold), color = "gray") +
+# Code for an interactive lollipop plot
+
+output$lollipop <- renderPlot({
+  futuretech_filtered() |> 
+  group_by(product) |>
+  summarize(total_product_sold = sum(units_sold), image_url = image_url) |> 
+  ggplot(aes(x = reorder(product, total_product_sold)), y = total_product_sold) +
+    geom_segment(aes(xend = product, y = 0, yend = total_product_sold), color = "gray") +
     geom_image(aes(image = image_url), size = 0.07) +
-    coord_flip() +
     labs(x = "Product", y = "Units Sold")
+})
+
+# Code for an interactive campaign effectiveness plot
+
+output$campaign <- renderPlot({
+  futuretech_filtered() |> 
+  group_by(shop, trigger) |> 
+  summarize(campaign_shop_sales = sum(units_sold), .groups = "drop") |> 
+  group_by(trigger) |> 
+  summarize(avg_campaign_shop_sales = mean(campaign_shop_sales), sd_campaign_shop_sales = sd(campaign_shop_sales), .groups = "drop") |> 
+  ggplot(aes(x = reorder(trigger, avg_campaign_shop_sales), y = avg_campaign_shop_sales, fill = trigger)) +
+  geom_col() +
+  geom_errorbar(aes(ymin = avg_campaign_shop_sales - sd_campaign_shop_sales, ymax = avg_campaign_shop_sales + sd_campaign_shop_sales), width = 0.2) +
+  labs(title = "Average Sales per Shop by Outreach Strategy") +
+  coord_flip()
 })
 ```
 
