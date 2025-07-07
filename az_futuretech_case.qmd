@@ -14,6 +14,7 @@ server: shiny
 
 library(tidyverse)
 library(skimr)
+library(ggimage)
 library(shiny)
 ```
 
@@ -75,7 +76,8 @@ sales_within_contact_window <- sales |>
   
 futuretech <- sales_within_contact_window |> 
   bind_rows(sales_before_first_contact) |> 
-  select(shop, product = Product, date_of_sell, units_sold, date_of_previous_contact, contact_count, first_contact, trigger) # Final database after wrangling and column tidying
+  select(shop, product = Product, date_of_sell, units_sold, date_of_previous_contact, contact_count, first_contact, trigger) |> 
+  mutate(image_url = case_when(product == "Badge of Courage" ~ "images/badge_of_courage.png", product == "Boots of Levitation" ~ "images/boots_of_levitation .png", product == "Cape of Velocity" ~ "images/cape_of_velocity.png", product == "Cloak of the Undead King" ~ "images/cloak_of_the_undead_king.png", product == "Elixir of Life" ~ "images/elixir_of_life.png", TRUE ~ "images/lions_shield_of_courage.png")) # Final database after wrangling, column tidying and adding images url
 
 # My final database has about 60 observations less than raw database because it does not contain information about outreaches that took place after the last sell
 ```
@@ -86,38 +88,11 @@ futuretech <- sales_within_contact_window |>
 #| include: false
 #| message: false
 
-futuretech_campaign_analysis <- futuretech |> 
-  group_by(shop, trigger) |> 
-  summarize(campaign_shop_sales = sum(units_sold), .groups = "drop") |> 
-  group_by(trigger) |> 
-  summarize(avg_campaign_shop_sales = mean(campaign_shop_sales), sd_campaign_shop_sales = sd(campaign_shop_sales), .groups = "drop")
-
-
-ggplot(futuretech_campaign_analysis, aes(x = reorder(trigger, avg_sales_during_campaign), y = avg_sales_during_campaign, fill = trigger)) +
-  geom_col() +
-  geom_errorbar(aes(ymin = avg_sales_during_campaign - sd_sales_during_campaign, ymax = avg_sales_during_campaign + sd_sales_during_campaign), width = 0.2) +
-  labs(title = "Average Sales per Shop by Outreach Strategy") +
-  coord_flip()
-
-hist <- futuretech |>
+mean_items_sold <- futuretech |> # Needed later on
   group_by(shop) |> 
-  summarize(shop_sales_total = sum(units_sold)) |> 
-  ggplot(aes(shop_sales_total)) +
-  geom_histogram(binwidth = 1) +
-  geom_vline(
-    aes(xintercept = mean(shop_sales_total)),
-    color = "red",
-    linetype = "dashed",
-    linewidth = 1
-  ) +
-  labs(
-    title = "Distribution of Items Sold with Mean Line",
-    x = "Items Sold",
-    y = "Count"
-  ) +
-  theme_minimal() # Histogram of sales, very useful for choosing inputs on slider, mean is 8.49
-
-# zastrzeżenie że też przed oknem marketingowym te rzeczy, mozesz zrobic disclaimer
+  summarize(sum = sum(units_sold)) |> 
+  pull(sum) |> 
+  mean() 
 
 futuretech |> 
   group_by(product, units_sold) |> 
@@ -125,6 +100,10 @@ futuretech |>
   summarize(total_products = units_sold * n, .groups = "drop") |> 
   group_by(product) |> 
   summarize(total = sum(total_products))
+
+futuretech |> 
+  group_by(product) |> 
+  summarize(sum = sum(units_sold))
 
 successful <- futuretech |> 
   group_by(shop) |> 
@@ -144,6 +123,27 @@ successful |>
   geom_errorbar(aes(ymin = avg_sales_during_campaign - sd_sales_during_campaign, ymax = avg_sales_during_campaign + sd_sales_during_campaign), width = 0.2) +
   labs(title = "Average Sales per Shop by Outreach Strategy") +
   coord_flip()
+
+
+
+
+
+
+futuretech_campaign_analysis <- futuretech |> 
+  group_by(shop, trigger) |> 
+  summarize(campaign_shop_sales = sum(units_sold), .groups = "drop") |> 
+  group_by(trigger) |> 
+  summarize(avg_campaign_shop_sales = mean(campaign_shop_sales), sd_campaign_shop_sales = sd(campaign_shop_sales), .groups = "drop")
+
+
+ggplot(futuretech_campaign_analysis, aes(x = reorder(trigger, avg_sales_during_campaign), y = avg_sales_during_campaign, fill = trigger)) +
+  geom_col() +
+  geom_errorbar(aes(ymin = avg_sales_during_campaign - sd_sales_during_campaign, ymax = avg_sales_during_campaign + sd_sales_during_campaign), width = 0.2) +
+  labs(title = "Average Sales per Shop by Outreach Strategy") +
+  coord_flip()
+
+
+
 ```
 
 ```{r}
@@ -155,16 +155,74 @@ successful |>
 
 # Plots
 
-## Sidebar {.sidebar}
+# {.sidebar}
 
 ```{r}
 sliderInput("items", "Filter shops by sales volume:", min = 1, max = 46, value = c(1, 46))
 ```
 
-## Main Body
+## Value boxes {height="20%"}
 
-### Value boxes {height="20%"}
+## Plots {height="80%"}
 
-### Row {height="80%"}
+### 1st row of plots 
+
+```{r}
+#| title: Working title
+
+futuretech |>
+  group_by(shop) |> 
+  summarize(shop_sales_total = sum(units_sold)) |> 
+  ggplot(aes(shop_sales_total)) +
+  geom_histogram(binwidth = 1) +
+  geom_vline(
+    aes(xintercept = mean(shop_sales_total)),
+    color = "red",
+    linetype = "dashed",
+    linewidth = 1
+  ) +
+  labs(
+    title = "Distribution of Items Sold",
+    x = "Items Sold",
+    y = "Count"
+  ) +
+  annotate(
+    "text",
+    x = mean_items_sold,
+    y = Inf,
+    label = paste("Mean =", round(mean_items_sold, 2)),
+    vjust = 4,
+    hjust = -0.1,
+    color = "red"
+  ) +
+  theme_minimal() # Histogram of sales, very useful for choosing inputs on slider, mean is 8.49
+
+# zastrzeżenie że też przed oknem marketingowym te rzeczy, mozesz zrobic disclaimer
+```
+
+```{r}
+#| title: Working title
+```
+
+### 2nd row of plots
+
+```{r}
+#| title: Working title
+```
 
 # Data
+
+```{r}
+filtered_data <- reactive({
+  df %>% filter(units_sold >= input$min_sales)
+})
+
+output$lollipopPlot <- renderPlot({
+  ggplot(filtered_data(), aes(x = reorder(product, units_sold), y = units_sold)) +
+    geom_segment(aes(xend = product, y = 0, yend = units_sold), color = "gray") +
+    geom_image(aes(image = image_url), size = 0.07) +
+    coord_flip() +
+    labs(x = "Product", y = "Units Sold")
+})
+```
+
