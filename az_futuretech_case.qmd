@@ -86,27 +86,27 @@ futuretech <- sales_within_contact_window |>
 
 # Plots
 
-# {.sidebar}
+## Sidebar {.sidebar}
 
 ```{r}
 sliderInput("sales_range", "Filter shops by sales volume:", min = 1, max = 46, value = c(1, 46))
 ```
 
-## Value boxes {height="20%"}
+## Main body
+
+### Value boxes {height="20%"}
 
 ```{r}
 value_box(
   title = "Mean number of items sold by a shop",
-  value = mean_items_sold,
-  theme = "teal"
+  value = 8.49
 )
 ```
 
 ```{r}
 value_box(
   title = "Total items sold overall",
-  value = 1324,
-  theme = "teal"
+  value = 1324
 )
 ```
 
@@ -114,18 +114,16 @@ value_box(
 value_box(
   title = "Most popular product",
   value = "Cloak of the Undead King: 501 items sold",
-  showcase = tags$img(src = "images/cloak_of_the_undead_king.png", height = "60px"),
-  theme = "teal"
+  showcase = tags$img(src = "images/cloak_of_the_undead_king.png", height = "60px")
 )
 ```
 
-## Plots {height="80%"}
+### Plots {height="80%"}
 
-### 1st row of plots 
+#### 1st row of plots 
 
 ```{r}
 #| title: Working title
-#| context: setup
 
 mean_items_sold <- futuretech |>
   group_by(shop) |> 
@@ -169,7 +167,7 @@ futuretech |>
 plotOutput("lollipop")
 ```
 
-### 2nd row of plots
+#### 2nd row of plots
 
 ```{r}
 #| title: Working title
@@ -194,10 +192,10 @@ futuretech_filtered <- reactive({
 output$lollipop <- renderPlot({
   futuretech_filtered() |> 
   group_by(product) |>
-  summarize(total_product_sold = sum(units_sold), image_url = image_url) |> 
+  summarize(total_product_sold = sum(units_sold), image_url = first(image_url)) |> 
   ggplot(aes(x = reorder(product, total_product_sold)), y = total_product_sold) +
     geom_segment(aes(xend = product, y = 0, yend = total_product_sold), color = "gray") +
-    geom_image(aes(image = image_url), size = 0.07) +
+    geom_image(aes(image = image_url, y = total_product_sold), size = 0.07) +
     labs(x = "Product", y = "Units Sold")
 })
 
@@ -216,4 +214,5 @@ output$campaign <- renderPlot({
   coord_flip()
 })
 ```
+
 
