@@ -2,8 +2,11 @@
 title: "FutureTech Sales Acceleration Analytics Case"
 format:
   dashboard:
+    orientation: columns
     nav-buttons: [github]
     github: https://github.com/pmmagusiak/az_futuretech_case
+    logo: images/logo.png
+    theme: lux
 server: shiny
 ---
 
@@ -14,8 +17,10 @@ server: shiny
 
 library(tidyverse)
 library(skimr)
+library(gt)
 library(bslib)
 library(ggimage)
+library(DT)
 library(shiny)
 ```
 
@@ -68,7 +73,7 @@ sales_before_first_contact <- sales |>
   inner_join(outreaches_processed, join_by(shop, Product), suffix = c("_of_sell", "_of_previous_contact"), relationship = "many-to-many") |> 
   group_by(shop, Product) |> 
   filter(date_of_sell < first_contact & contact_window_start == first_contact) |> 
-  mutate(date_of_previous_contact = NA_Date_, contact_window_start = NA_Date_, contact_window_end = NA_Date_, trigger = NA) # There were 408 cases of items sold before first contact
+  mutate(date_of_previous_contact = NA_Date_, contact_window_start = NA_Date_, contact_window_end = NA_Date_, trigger = "Sales before first manufacturer contact") # There were 408 cases of items sold before first contact. I changed trigger label for the sake of future plot
 
 sales_within_contact_window <- sales |> 
   inner_join(outreaches_processed, join_by(shop, Product), suffix = c("_of_sell", "_of_previous_contact"), relationship = "many-to-many") |> 
@@ -77,14 +82,14 @@ sales_within_contact_window <- sales |>
   
 futuretech <- sales_within_contact_window |> 
   bind_rows(sales_before_first_contact) |> 
-  select(shop, product = Product, date_of_sell, units_sold, date_of_previous_contact, contact_count, first_contact, trigger) |> 
-  mutate(product = factor(product)) |> 
+  select(shop, location, product = Product, date_of_sell, units_sold, date_of_previous_contact, contact_count, first_contact, trigger) |> 
+  mutate(product = factor(product), trigger = factor(trigger)) |> 
   mutate(image_url = case_when(product == "Badge of Courage" ~ "images/badge_of_courage.png", product == "Boots of Levitation" ~ "images/boots_of_levitation .png", product == "Cape of Velocity" ~ "images/cape_of_velocity.png", product == "Cloak of the Undead King" ~ "images/cloak_of_the_undead_king.png", product == "Elixir of Life" ~ "images/elixir_of_life.png", TRUE ~ "images/lions_shield_of_courage.png")) # Final database after wrangling, column tidying and adding images url
 
 # My final database has about 60 observations less than raw database because it does not contain information about outreaches that took place after the last sell
 ```
 
-# Plots
+# Analysis
 
 ## Sidebar {.sidebar}
 
@@ -92,38 +97,59 @@ futuretech <- sales_within_contact_window |>
 sliderInput("sales_range", "Filter shops by sales volume:", min = 1, max = 46, value = c(1, 46))
 ```
 
-## Main body
+## Column - Value boxes and plots {width=55%}
 
-### Value boxes {height="20%"}
+### Row - Value boxes {height=18%}
 
 ```{r}
 value_box(
-  title = "Mean number of items sold by a shop",
-  value = 8.49
+  title = "Average shop sells",
+  value = 8.49,
+  theme = "light"
 )
 ```
 
 ```{r}
 value_box(
-  title = "Total items sold overall",
-  value = 1324
+  title = "Total units sold",
+  value = 1324,
+  theme = "light"
 )
 ```
 
 ```{r}
 value_box(
-  title = "Most popular product",
-  value = "Cloak of the Undead King: 501 items sold",
-  showcase = tags$img(src = "images/cloak_of_the_undead_king.png", height = "60px")
+  title = "Top-selling product",
+  value = "",
+  showcase = tags$img(src = "images/cloak_of_the_undead_king.png", height = "60px"),
+  showcase_layout = "bottom",
+  theme = "light" # Cloak of the Undead King: 501 items sold. Unfortunately I haven't find a good way to add captions, it does not fit properly, especially using value property
 )
 ```
 
-### Plots {height="80%"}
-
-#### 1st row of plots 
+### Row - Plot - Mean shop-level sales by engagement approach {height=38%}
 
 ```{r}
-#| title: Working title
+#| title: Mean shop-level sales by engagement approach
+
+plotOutput("campaign")
+```
+
+### Row - Plot - Lollipop {height=44%}
+
+```{r}
+#| title: Which products sell the most?
+
+plotOutput("lollipop")
+```
+
+## Column - Plot and table {width=45%}
+
+### Row - Plot - Distribution of products sold {height=50%}
+
+```{r}
+#| title: Distribution of products sold
+#| fig-width: 10
 
 mean_items_sold <- futuretech |>
   group_by(shop) |> 
@@ -138,13 +164,12 @@ futuretech |>
   geom_histogram(binwidth = 1) +
   geom_vline(
     aes(xintercept = mean(shop_sales_total)),
-    color = "red",
+    color = "#F8766D",
     linetype = "dashed",
     linewidth = 1
   ) +
   labs(
-    title = "Distribution of Items Sold",
-    x = "Items Sold",
+    x = "Units sold",
     y = "Count"
   ) +
   annotate(
@@ -154,25 +179,59 @@ futuretech |>
     label = paste("Mean =", round(mean_items_sold, 2)),
     vjust = 4,
     hjust = -0.1,
-    color = "red"
+    color = "#F8766D"
   ) +
-  theme_minimal() # Histogram of sales, very useful for choosing inputs on slider, mean is 8.49
+  theme_minimal() # Histogram of sales, very useful for choosing inputs on slider
+```
 
-# zastrzeżenie że też przed oknem marketingowym te rzeczy, mozesz zrobic disclaimer
+### Row - Tabset of tables {height=50% .tabset}
+
+```{r}
+#| include: false
+#| message: false
+
+futuretech |> 
+  count(shop, product)
+
+n_distinct(futuretech$shop) # Those two lines of code prove that one shop bought only one type of product
 ```
 
 ```{r}
-#| title: Working title
+#| title: Top 20 sellers
+#| fig-width: 10
 
-plotOutput("lollipop")
+futuretech |> 
+  group_by(shop, product, location) |> 
+  summarize(shop_sales_total = sum(units_sold), .groups = "drop") |> 
+  arrange(desc(shop_sales_total)) |>
+  slice_head(n = 20) |>
+  select(Shop = shop, Location = location, Product = product, Sold = shop_sales_total) |>
+  gt() |> 
+  cols_align(align = "left", columns = Product) |> 
+  tab_options(table.width = "95%")
 ```
 
-#### 2nd row of plots
+```{r}
+#| title: Bottom 20 sellers
+#| fig-width: 10
+
+futuretech |> 
+  group_by(shop, product, location) |> 
+  summarize(shop_sales_total = sum(units_sold), .groups = "drop") |> 
+  arrange(shop_sales_total) |>
+  slice_head(n = 20) |>
+  select(Shop = shop, Location = location, Product = product, Sold = shop_sales_total) |>
+  gt() |> 
+  cols_align(align = "left", columns = Product) |> 
+  tab_options(table.width = "95%")
+```
+
+# Data
 
 ```{r}
-#| title: Working title
-
-plotOutput("campaign")
+futuretech |> 
+  select(-c(first_contact, image_url)) |> 
+  datatable(colnames = c("date of sell" = "date_of_sell", "units sold" = "units_sold", "previous contact" = "date_of_previous_contact", "contact count" = "contact_count", "contact type" = "trigger"))
 ```
 
 ```{r}
@@ -193,10 +252,13 @@ output$lollipop <- renderPlot({
   futuretech_filtered() |> 
   group_by(product) |>
   summarize(total_product_sold = sum(units_sold), image_url = first(image_url)) |> 
-  ggplot(aes(x = reorder(product, total_product_sold)), y = total_product_sold) +
+  ggplot(aes(x = reorder(product, total_product_sold, decreasing = TRUE)), y = total_product_sold) +
     geom_segment(aes(xend = product, y = 0, yend = total_product_sold), color = "gray") +
-    geom_image(aes(image = image_url, y = total_product_sold), size = 0.07) +
-    labs(x = "Product", y = "Units Sold")
+    geom_image(aes(image = image_url, y = total_product_sold), size = .15) +
+    scale_y_continuous(expand = expansion(mult = c(0, 0.15))) + # I am using this line so that my top image is fitting to plot
+    ylab("Units sold") +
+    theme_light() +
+    theme(axis.title.x = element_blank())
 })
 
 # Code for an interactive campaign effectiveness plot
@@ -210,9 +272,14 @@ output$campaign <- renderPlot({
   ggplot(aes(x = reorder(trigger, avg_campaign_shop_sales), y = avg_campaign_shop_sales, fill = trigger)) +
   geom_col() +
   geom_errorbar(aes(ymin = avg_campaign_shop_sales - sd_campaign_shop_sales, ymax = avg_campaign_shop_sales + sd_campaign_shop_sales), width = 0.2) +
-  labs(title = "Average Sales per Shop by Outreach Strategy") +
+    labs(y = "Units sold", fill = "Campaign", caption = "Error bars represent ±1 standard deviation from the mean") +
+    theme_light() + 
+  theme(
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank()) +
+    
+  
   coord_flip()
 })
 ```
-
-
