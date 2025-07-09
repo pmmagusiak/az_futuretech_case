@@ -82,7 +82,7 @@ sales_before_first_contact <- sales |>
   inner_join(outreaches_processed, join_by(shop, Product), suffix = c("_of_sell", "_of_previous_contact"), relationship = "many-to-many") |> 
   group_by(shop, Product) |> 
   filter(date_of_sell < first_contact & contact_window_start == first_contact) |> 
-  mutate(date_of_previous_contact = NA_Date_, contact_window_start = NA_Date_, contact_window_end = NA_Date_, trigger = NA) |> 
+  mutate(date_of_previous_contact = NA_Date_, contact_window_start = NA_Date_, contact_window_end = NA_Date_, trigger = "Sales before first contact") |>
   distinct() # There were 402 cases of items sold before first contact. I changed trigger label for the sake of future plot. 6 rows were duplicated, that is why I use distinct()
 
 sales_within_contact_window <- sales |> 
@@ -163,7 +163,8 @@ contact_quintiles <- futuretech |>
   ))
 
 futuretech_with_quintiles <- futuretech |> 
-  left_join(contact_quintiles |> select(shop, total_contacts_amount), by = "shop")
+  left_join(contact_quintiles |> select(shop, total_contacts_amount), by = "shop") |> 
+  mutate(total_contacts_amount = factor(total_contacts_amount))
 
 futuretech |> 
   group_by(shop) |> 
@@ -194,9 +195,9 @@ futuretech |>
 sliderInput("sales_range", "Filter shops by sales volume:", min = 1, max = 46, value = c(1, 46))
 ```
 
-## Column - Value boxes and plots {width=55%}
+## Column - Value boxes and plots {width=63%}
 
-### Row - Value boxes {height=16%}
+### Row - Value boxes {height=17%}
 
 ```{r}
 value_box(
@@ -214,15 +215,21 @@ value_box(
 )
 ```
 
-### Row - Plot - Mean shop-level sales by engagement approach {height=40%}
+### Row - Plot - Mean shop-level sales by engagement approach {height=41% .tabset}
 
 ```{r}
-#| title: Mean shop-level sales by engagement approach
+#| title: Average sales by outreach method
 
 plotOutput("campaign")
 ```
 
-### Row - Plot - Lollipop {height=44%}
+```{r}
+#| title: How contact frequency affects sales?
+
+plotOutput("contacts")
+```
+
+### Row - Plot - Lollipop {height=42%}
 
 ```{r}
 #| title: Which products sell the most?
@@ -230,7 +237,7 @@ plotOutput("campaign")
 plotOutput("lollipop")
 ```
 
-## Column - Plot and table {width=45%}
+## Column - Plot and table {width=37%}
 
 ### Row - Plot - Distribution of products sold {height=50%}
 
@@ -256,8 +263,8 @@ futuretech |>
     linewidth = 1
   ) +
   labs(
-    x = "Units sold",
-    y = "Count"
+    x = "Products sold",
+    y = "Number of shops"
   ) +
   annotate(
     "text",
@@ -318,7 +325,7 @@ futuretech |>
 ```{r}
 futuretech |> 
   select(-c(first_contact, image_url)) |> 
-  datatable(colnames = c("date of sell" = "date_of_sell", "units sold" = "units_sold", "previous contact" = "date_of_previous_contact", "contact count" = "contact_count", "contact type" = "trigger"))
+  datatable(colnames = c("date of sell" = "date_of_sell", "units sold" = "units_sold", "previous contact" = "date_of_previous_contact", "contact type" = "trigger"))
 ```
 
 ```{r}
@@ -327,7 +334,7 @@ futuretech |>
 # Basic filtering logic
 
 futuretech_filtered <- reactive({
-  futuretech |>
+  futuretech_with_quintiles |>
     group_by(shop) |> 
     filter(sum(units_sold) >= input$sales_range[1] & sum(units_sold) <= input$sales_range[2]) |> 
     ungroup()
@@ -378,10 +385,10 @@ output$lollipop <- renderPlot({
   group_by(product) |>
   summarize(total_product_sold = sum(units_sold), image_url = first(image_url)) |> 
   ggplot(aes(x = reorder(product, total_product_sold, decreasing = TRUE)), y = total_product_sold) +
-    geom_segment(aes(xend = product, y = 0, yend = total_product_sold, linewidth = "10px"), color = "gray", show.legend = FALSE) +
+    geom_segment(aes(xend = product, y = 0, yend = total_product_sold), color = "gray", size = 2) +
     geom_image(aes(image = image_url, y = total_product_sold), size = .15) +
     scale_y_continuous(expand = expansion(mult = c(0, 0.15))) + # I am using this line so that my top image is fitting to plot
-    ylab("Units sold") +
+    ylab("Products sold") +
     theme_light() +
     theme(axis.title.x = element_blank())
 })
@@ -393,18 +400,34 @@ output$campaign <- renderPlot({
   group_by(shop, trigger) |> 
   summarize(campaign_shop_sales = sum(units_sold), .groups = "drop") |> 
   group_by(trigger) |> 
-  summarize(avg_campaign_shop_sales = mean(campaign_shop_sales), sd_campaign_shop_sales = sd(campaign_shop_sales), .groups = "drop") |> 
+  summarize(avg_campaign_shop_sales = mean(campaign_shop_sales), .groups = "drop") |> 
   ggplot(aes(x = reorder(trigger, avg_campaign_shop_sales), y = avg_campaign_shop_sales, fill = trigger)) +
   geom_col() +
-  geom_errorbar(aes(ymin = avg_campaign_shop_sales - sd_campaign_shop_sales, ymax = avg_campaign_shop_sales + sd_campaign_shop_sales), width = 0.2) +
-    labs(y = "Units sold", fill = "Campaign", caption = "Error bars represent ±1 standard deviation from the mean") +
+    labs(y = "Products sold", fill = "Campaign") +
     theme_light() + 
   theme(
         axis.title.y = element_blank(),
         axis.text.y = element_blank(),
         axis.ticks.y = element_blank()) +
-    
-  
+  coord_flip()
+})
+
+# Code for an interactive contacts amount effectiveness plot
+
+output$contacts <- renderPlot({
+  futuretech_filtered() |> 
+  group_by(shop, total_contacts_amount) |> 
+  summarize(shop_sales_per_contact_amount = sum(units_sold), .groups = "drop") |> 
+  group_by(total_contacts_amount) |> 
+  summarize(avg_shop_sales_per_contact_amount = mean(shop_sales_per_contact_amount), .groups = "drop") |> 
+  ggplot(aes(x = total_contacts_amount, y = avg_shop_sales_per_contact_amount, fill = total_contacts_amount)) +
+  geom_col() +
+    labs(y = "Products sold", fill = "How many times a shop was contacted?") +
+    theme_light() + 
+  theme(
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank()) +
   coord_flip()
 })
 ```
