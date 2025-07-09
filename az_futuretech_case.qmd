@@ -89,6 +89,95 @@ futuretech <- sales_within_contact_window |>
 # My final database has about 60 observations less than raw database because it does not contain information about outreaches that took place after the last sell
 ```
 
+```{r}
+#| label: data-analysis
+#| context: setup
+#| include: false
+#| message: false
+
+
+sales2 <- sales |>
+  group_by(shop, Product, date) |> 
+  ungroup() |> 
+  arrange(date) |> 
+  group_by(shop, Product) |> 
+  mutate(sales_window_start = lag(date) + days(1), sales_window_end = date)
+
+
+
+
+
+futuretech |> 
+  group_by(shop, trigger) |> 
+  summarize(campaign_shop_sales = sum(units_sold))
+  
+futuretech |> 
+  group_by(shop, date_of_previous_contact) |> 
+  summarize(how_many_contacts = n_distinct(date_of_previous_contact))
+
+futuretech |>
+  group_by(shop) |>  
+  mutate(total_contacts = n_distinct(date_of_previous_contact, na.rm = TRUE)) |> 
+  ungroup() |> 
+  distinct(shop, total_contacts) |> 
+  count(total_contacts, sort = TRUE)
+
+  
+  # Distribution of total contacts count, based on this I can create additional categorical label, 
+
+outreaches |> 
+  group_by(shop) |>  
+  mutate(total_contacts = n_distinct(date, na.rm = TRUE)) |> 
+  ungroup() |> 
+  distinct(shop, total_contacts) |> 
+  count(total_contacts, sort = TRUE) |> 
+  print(n = 25)
+
+outreaches |> 
+  group_by(shop) |> 
+  distinct(date, .keep_all = TRUE) |> 
+  count(shop, sort = TRUE) # In the original database there is more contacts! I made a mistake somewhere
+
+  
+  
+  
+  
+  
+  mutate(
+    contact_category = case_when(
+      total_contacts == 1 ~ "1 kontakt",
+      total_contacts >= 2 & total_contacts <= 4 ~ "Od 2 do 4 kontaktów",
+      total_contacts > 4 ~ "Więcej niż 4 kontakty",
+      TRUE ~ "Brak danych"
+    )
+  )
+✅ Option
+                                  
+  summarize(campaign_shop_sales = sum(units_sold), .groups = "drop") |> 
+  group_by(trigger) |> 
+  summarize(avg_campaign_shop_sales = mean(campaign_shop_sales), sd_campaign_shop_sales = sd(campaign_shop_sales), .groups = "drop") |> 
+  ggplot(aes(x = reorder(trigger, avg_campaign_shop_sales), y = avg_campaign_shop_sales, fill = trigger)) +
+  geom_col() +
+  geom_errorbar(aes(ymin = avg_campaign_shop_sales - sd_campaign_shop_sales, ymax = avg_campaign_shop_sales + sd_campaign_shop_sales), width = 0.2) +
+    labs(y = "Units sold", fill = "Campaign", caption = "Error bars represent ±1 standard deviation from the mean") +
+    theme_light() + 
+  theme(
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank()) +
+    
+  
+  coord_flip()
+  
+
+  
+futuretech |> 
+  group_by(shop) |> 
+  filter(date_of_sell < "2020-06-22", sum(units_sold) == 1) |> View() # We know from the initial prep that shops sold units from 2014-10-12 to 2024-01-08, median is 2020-06-22, let's dive into a group of shops which sold product long ago. 
+ 
+```
+
+
 # Analysis
 
 ## Sidebar {.sidebar}
@@ -99,12 +188,12 @@ sliderInput("sales_range", "Filter shops by sales volume:", min = 1, max = 46, v
 
 ## Column - Value boxes and plots {width=55%}
 
-### Row - Value boxes {height=18%}
+### Row - Value boxes {height=16%}
 
 ```{r}
 value_box(
   title = "Average shop sells",
-  value = 8.49,
+  value = textOutput("mean"),
   theme = "light"
 )
 ```
@@ -112,22 +201,12 @@ value_box(
 ```{r}
 value_box(
   title = "Total units sold",
-  value = 1324,
+  value = textOutput("total"),
   theme = "light"
 )
 ```
 
-```{r}
-value_box(
-  title = "Top-selling product",
-  value = "",
-  showcase = tags$img(src = "images/cloak_of_the_undead_king.png", height = "60px"),
-  showcase_layout = "bottom",
-  theme = "light" # Cloak of the Undead King: 501 items sold. Unfortunately I haven't find a good way to add captions, it does not fit properly, especially using value property
-)
-```
-
-### Row - Plot - Mean shop-level sales by engagement approach {height=38%}
+### Row - Plot - Mean shop-level sales by engagement approach {height=40%}
 
 ```{r}
 #| title: Mean shop-level sales by engagement approach
@@ -246,6 +325,44 @@ futuretech_filtered <- reactive({
     ungroup()
 })
 
+# Value boxes code
+
+average_shop_sales <- reactive({
+  futuretech_filtered() |>
+    group_by(shop) |> 
+    summarize(sum = sum(units_sold)) |> 
+    pull(sum) |> 
+    mean()
+})
+
+output$mean <- renderText({
+  round(average_shop_sales(), 2)
+})
+
+total_units_sold <- reactive({
+  futuretech_filtered() |> 
+    summarize(total = sum(units_sold)) |> 
+    pull(total)
+})
+
+output$total <- renderText({
+  total_units_sold()
+})
+
+# top_selling_product <- reactive({
+#   futuretech_filtered() |> 
+#     group_by(product) |>
+#     summarize(total_product_sold = sum(units_sold)) |> 
+#     arrange(desc(total_product_sold)) |> 
+#     slice_head(n = 1) |> 
+#     pull(product) |> 
+#     as.character()
+# })
+# 
+# output$top_seller <- renderText({
+#   top_selling_product()
+# })
+
 # Code for an interactive lollipop plot
 
 output$lollipop <- renderPlot({
@@ -253,7 +370,7 @@ output$lollipop <- renderPlot({
   group_by(product) |>
   summarize(total_product_sold = sum(units_sold), image_url = first(image_url)) |> 
   ggplot(aes(x = reorder(product, total_product_sold, decreasing = TRUE)), y = total_product_sold) +
-    geom_segment(aes(xend = product, y = 0, yend = total_product_sold), color = "gray") +
+    geom_segment(aes(xend = product, y = 0, yend = total_product_sold, linewidth = "10px"), color = "gray", show.legend = FALSE) +
     geom_image(aes(image = image_url, y = total_product_sold), size = .15) +
     scale_y_continuous(expand = expansion(mult = c(0, 0.15))) + # I am using this line so that my top image is fitting to plot
     ylab("Units sold") +
