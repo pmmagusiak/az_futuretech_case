@@ -54,21 +54,16 @@ outreaches |>
   filter(n > 1) # There were cases of more than 1 contact per day
 
 outreaches_processed <- outreaches |>
-  group_by(shop, Product, date) |> 
-  mutate(contacts_on_that_day = n()) |> # Column with a number of contacts per date
-  ungroup() |> 
   arrange(date) |> 
   group_by(shop, Product) |> 
   mutate(first_contact = min(date), contact_window_start = date, contact_window_end = lead(date) - days(1)) |> # As there are sales that took place before first contact, a first contact column may prove useful
   mutate(contact_window_end = case_when(is.na(contact_window_end) ~ today(), TRUE ~ contact_window_end)) |> 
   ungroup() |> 
   group_by(shop, trigger) |>  
-  mutate(total_contacts_per_shop_per_trigger = n_distinct(date)) |> 
-  mutate(total_contacts_per_shop_per_trigger = case_when(shop == "SSID_704509" & trigger == "Other" ~ total_contacts_per_shop_per_trigger + 2, shop == "SSID_307863" & trigger == "Other" ~ total_contacts_per_shop_per_trigger + 2, shop == "SSID_710792" ~ total_contacts_per_shop_per_trigger + 1, shop == "SSID_850572" & trigger == "Regular Check-In" ~ total_contacts_per_shop_per_trigger + 1, TRUE ~ total_contacts_per_shop_per_trigger)) |> 
+  mutate(total_contacts_per_shop_per_trigger = n()) |> 
   ungroup() |> 
   group_by(shop) |> 
-  mutate(total_contacts_per_shop = n_distinct(date)) |> 
-  mutate(total_contacts_per_shop = case_when(shop == "SSID_704509" ~ total_contacts_per_shop + 2, shop == "SSID_307863" ~ total_contacts_per_shop + 2, shop == "SSID_710792" ~ total_contacts_per_shop + 1, shop == "SSID_850572" ~ total_contacts_per_shop + 1, TRUE ~ total_contacts_per_shop)) # A ton of manual labour (I couldn't find a way to do it more elegant way) to have a count of contacts with correction of multiple contacts per day
+  mutate(total_contacts_per_shop = n())
 
 ## Focusing on sales database, initial procedures the same as above
 
@@ -96,42 +91,9 @@ futuretech <- sales_within_contact_window |>
   mutate(product = factor(product), trigger = factor(trigger)) |> 
   mutate(image_url = case_when(product == "Badge of Courage" ~ "images/badge_of_courage.png", product == "Boots of Levitation" ~ "images/boots_of_levitation .png", product == "Cape of Velocity" ~ "images/cape_of_velocity.png", product == "Cloak of the Undead King" ~ "images/cloak_of_the_undead_king.png", product == "Elixir of Life" ~ "images/elixir_of_life.png", TRUE ~ "images/lions_shield_of_courage.png")) # Final database after wrangling, column tidying and adding images url
 
-# My final database has about 60 observations less than raw database because it does not contain information about outreaches that took place after the last sell. Below a bunch of code I will delete probably tomorrow, it is still chaos
-
-
-# sales_processed <- sales |>
-#   group_by(shop, Product, date) |> 
-#   ungroup() |> 
-#   arrange(date) |> 
-#   group_by(shop, Product) |> 
-#   mutate(sales_window_start = lag(date) + days(1), sales_window_end = date, first_sale = min(date)) |> 
-#   mutate(sales_window_start = case_when(is.na(sales_window_start) ~ as.Date("2014-01-01"), TRUE ~ sales_window_start)) # had to do this 2014 to join without filtering out
-
-# sales_before_first_contact1 <- sales_processed |> 
-#   inner_join(outreaches_processed |> group_by(shop, Product) |> 
-#       summarize(first_contact = min(date), .groups = "drop"),
-#     join_by(shop, Product)) |> 
-#   group_by(shop, Product) |> 
-#   filter(date < first_contact) |> 
-#   mutate(trigger = "Sales before first manufacturer contact") |> 
-#   rename(date_of_sell = date)
-
-# sales_within_contact_window1 <- sales_processed |> 
-#   inner_join(outreaches_processed, join_by(shop, Product), suffix = c("_of_sell", "_of_contact"), relationship = "many-to-many") |> 
-#   group_by(shop, Product) |> 
-#   filter(date_of_contact > sales_window_start & date_of_contact < sales_window_end)
-
-# sales_within_contact_window_final <- bind_rows(sales_within_contact_window, sales_within_contact_window1) |> distinct()
-
-# finaldb <- sales_within_contact_window_final |>
-#   group_by(shop, trigger) |>  
-#   mutate(total_contacts_per_shop_per_trigger = n_distinct(date_of_contact)) |> 
-#   mutate(total_contacts_per_shop_per_trigger = case_when(shop == "SSID_704509" ~ total_contacts_per_shop_per_trigger + 2, shop == "SSID_307863" ~ total_contacts_per_shop_per_trigger + 1, shop == "SSID_710792" ~ total_contacts_per_shop_per_trigger + 1, shop == "SSID_850572" & trigger == "Regular Check-In" ~ total_contacts_per_shop_per_trigger + 1, TRUE ~ total_contacts_per_shop_per_trigger)) |> 
-#   ungroup() |> 
-#   group_by(shop) |> 
-#   mutate(total_contacts = n_distinct(date_of_contact)) |> 
-#   mutate(total_contacts = case_when(shop == "SSID_704509" ~ total_contacts + 2, shop == "SSID_307863" ~ total_contacts + 1, shop == "SSID_710792" ~ total_contacts + 1, shop == "SSID_850572" ~ total_contacts + 1, TRUE ~ total_contacts))
+# My final database has about 60 observations less than raw database because it does not contain information about outreaches that took place after the last sell.
 ```
+
 
 ```{r}
 #| label: further-data-analysis
@@ -166,25 +128,9 @@ futuretech_with_quintiles <- futuretech |>
   left_join(contact_quintiles |> select(shop, total_contacts_amount), by = "shop") |> 
   mutate(total_contacts_amount = factor(total_contacts_amount))
 
-futuretech |> 
+lowest_sales <- futuretech |> 
   group_by(shop) |> 
-  filter(date_of_sell < "2020-06-22", sum(units_sold) == 1) |> View() # We know from the initial prep that shops sold units from 2014-10-12 to 2024-01-08, median is 2020-06-22, let's dive into a group of shops which sold product long ago. 
-
-
-# futuretech |> 
-#   group_by(shop, trigger) |> 
-#   summarize(campaign_shop_sales = sum(units_sold))
-#   
-# futuretech |> 
-#   group_by(shop, date_of_previous_contact) |> 
-#   summarize(how_many_contacts = n_distinct(date_of_previous_contact))
-# 
-# futuretech |>
-#   group_by(shop) |>  
-#   mutate(total_contacts = n_distinct(date_of_previous_contact, na.rm = TRUE)) |> 
-#   ungroup() |> 
-#   distinct(shop, total_contacts) |> 
-#   count(total_contacts, sort = TRUE)
+  filter(date_of_sell < "2020-06-22", sum(units_sold) == 1) # We know from the initial prep that shops sold units from 2014-10-12 to 2024-01-08, median is 2020-06-22, let's dive into a group of shops which sold product long ago. 
 ```
 
 # Analysis
@@ -364,20 +310,6 @@ output$total <- renderText({
   total_units_sold()
 })
 
-# top_selling_product <- reactive({
-#   futuretech_filtered() |> 
-#     group_by(product) |>
-#     summarize(total_product_sold = sum(units_sold)) |> 
-#     arrange(desc(total_product_sold)) |> 
-#     slice_head(n = 1) |> 
-#     pull(product) |> 
-#     as.character()
-# })
-# 
-# output$top_seller <- renderText({
-#   top_selling_product()
-# })
-
 # Code for an interactive lollipop plot
 
 output$lollipop <- renderPlot({
@@ -431,3 +363,58 @@ output$contacts <- renderPlot({
   coord_flip()
 })
 ```
+
+```{r}
+#| label: stupid-code-cemetery
+
+# sales_processed <- sales |>
+#   group_by(shop, Product, date) |> 
+#   ungroup() |> 
+#   arrange(date) |> 
+#   group_by(shop, Product) |> 
+#   mutate(sales_window_start = lag(date) + days(1), sales_window_end = date, first_sale = min(date)) |> 
+#   mutate(sales_window_start = case_when(is.na(sales_window_start) ~ as.Date("2014-01-01"), TRUE ~ sales_window_start)) # had to do this 2014 to join without filtering out
+
+# sales_before_first_contact1 <- sales_processed |> 
+#   inner_join(outreaches_processed |> group_by(shop, Product) |> 
+#       summarize(first_contact = min(date), .groups = "drop"),
+#     join_by(shop, Product)) |> 
+#   group_by(shop, Product) |> 
+#   filter(date < first_contact) |> 
+#   mutate(trigger = "Sales before first manufacturer contact") |> 
+#   rename(date_of_sell = date)
+
+# sales_within_contact_window1 <- sales_processed |> 
+#   inner_join(outreaches_processed, join_by(shop, Product), suffix = c("_of_sell", "_of_contact"), relationship = "many-to-many") |> 
+#   group_by(shop, Product) |> 
+#   filter(date_of_contact > sales_window_start & date_of_contact < sales_window_end)
+
+# sales_within_contact_window_final <- bind_rows(sales_within_contact_window, sales_within_contact_window1) |> distinct()
+
+# finaldb <- sales_within_contact_window_final |>
+#   group_by(shop, trigger) |>
+#   mutate(total_contacts_per_shop_per_trigger = n_distinct(date_of_contact)) |>
+#   mutate(total_contacts_per_shop_per_trigger = case_when(shop == "SSID_704509" ~ total_contacts_per_shop_per_trigger + 2, shop == "SSID_307863" ~ total_contacts_per_shop_per_trigger + 1, shop == "SSID_710792" total_contacts_per_shop_per_trigger + 1, shop == "SSID_850572" & trigger == "Regular Check-In" ~ total_contacts_per_shop_per_trigger + 1, TRUE ~ total_contacts_per_shop_per_trigger)) |>
+#   ungroup() |>
+#   group_by(shop) |>
+#   mutate(total_contacts = n_distinct(date_of_contact)) |>
+#   mutate(total_contacts = case_when(shop == "SSID_704509" ~ total_contacts + 2, shop == "SSID_307863" ~ total_contacts + 1, shop == "SSID_710792" ~ total_contacts + 1, shop == "SSID_850572" ~ total_contacts + 1, TRUE ~ total_contacts))
+
+# outreaches_old_stupid_version <- outreaches |>
+#   group_by(shop, Product, date) |>
+#   mutate(contacts_on_that_day = n()) |> # Column with a number of contacts per date
+#   ungroup() |>
+#   arrange(date) |>
+#   group_by(shop, Product) |>
+#   mutate(first_contact = min(date), contact_window_start = date, contact_window_end = lead(date) - days(1)) |> # As there are sales that took place before first contact, a first contact column may prove useful
+#   mutate(contact_window_end = case_when(is.na(contact_window_end) ~ today(), TRUE ~ contact_window_end)) |>
+#   ungroup() |>
+#   group_by(shop, trigger) |>
+#   mutate(total_contacts_per_shop_per_trigger = n_distinct(date)) |>
+#   mutate(total_contacts_per_shop_per_trigger = case_when(shop == "SSID_704509" & trigger == "Other" ~ total_contacts_per_shop_per_trigger + 2, shop == "SSID_307863" & trigger == "Other" ~ total_contacts_per_shop_per_trigger + 2, shop == "SSID_710792" ~ total_contacts_per_shop_per_trigger + 1, shop == "SSID_850572" & trigger == "Regular Check-In" ~ total_contacts_per_shop_per_trigger + 1, TRUE ~ total_contacts_per_shop_per_trigger)) |>
+#   ungroup() |>
+#   group_by(shop) |>
+#   mutate(total_contacts_per_shop = n_distinct(date)) |>
+#   mutate(total_contacts_per_shop = case_when(shop == "SSID_704509" ~ total_contacts_per_shop + 2, shop == "SSID_307863" ~ total_contacts_per_shop + 2, shop == "SSID_710792" ~ total_contacts_per_shop + 1, shop == "SSID_850572" ~ total_contacts_per_shop + 1, TRUE ~ total_contacts_per_shop)) # A ton of manual labour (I couldn't find a way to do it more elegant way) to have a count of contacts with correction of multiple contacts per day
+```
+
