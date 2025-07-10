@@ -337,7 +337,7 @@ output$campaign <- renderPlot({
   summarize(avg_campaign_shop_sales = mean(campaign_shop_sales), .groups = "drop") |> 
   ggplot(aes(x = reorder(trigger, avg_campaign_shop_sales), y = avg_campaign_shop_sales, fill = trigger)) +
   geom_col() +
-    labs(y = "Products sold", fill = "Campaign", caption = "Note: Averages are calculated at the shop level") +
+    labs(y = "Products sold", fill = "Contacty type", caption = "Note: Averages are calculated at the shop level. Bar color indicates the type of preceding contact strategy") +
   scale_fill_manual(values = c("Regular Check-In" = "#ffc107" , "Other" = "#4caf50", "Engagement Booster" = "#9c27b0" , "Sales before first contact" = "#6c757d"), drop = FALSE) +
   theme_light() + 
   theme(
