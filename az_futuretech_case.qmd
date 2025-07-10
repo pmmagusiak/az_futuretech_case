@@ -85,10 +85,12 @@ sales_within_contact_window <- sales |>
   group_by(shop, Product) |> 
   filter(date_of_sell >= contact_window_start & date_of_sell <= contact_window_end)  # Joining variables are shop and product, as there are the same amount of n_unique shop ids and product names in both dbases and shops are in center of my analysis; join type does not matter right now because of many-to-many relationship
 
+trigger_levels <- c("Regular Check-In", "Other", "Engagement Booster", "Sales before first contact")
+
 futuretech <- sales_within_contact_window |> 
   bind_rows(sales_before_first_contact) |>
   select(shop, location, product = Product, date_of_sell, units_sold, date_of_previous_contact, first_contact, trigger, total_contacts_per_shop_per_trigger, total_contacts_per_shop) |> 
-  mutate(product = factor(product), trigger = factor(trigger)) |> 
+  mutate(product = factor(product), trigger = factor(trigger, levels = trigger_levels)) |> 
   mutate(image_url = case_when(product == "Badge of Courage" ~ "images/badge_of_courage.png", product == "Boots of Levitation" ~ "images/boots_of_levitation .png", product == "Cape of Velocity" ~ "images/cape_of_velocity.png", product == "Cloak of the Undead King" ~ "images/cloak_of_the_undead_king.png", product == "Elixir of Life" ~ "images/elixir_of_life.png", TRUE ~ "images/lions_shield_of_courage.png")) # Final database after wrangling, column tidying and adding images url
 
 # My final database has about 60 observations less than raw database because it does not contain information about outreaches that took place after the last sell.
@@ -124,9 +126,11 @@ contact_quintiles <- futuretech |>
     labels = c("1 to 4", "5 to 8", "9 to 13", "14 to 20", "21 to 27")
   ))
 
+contacts_amount_levels <- c("1 to 4", "5 to 8", "9 to 13", "14 to 20", "21 to 27")
+
 futuretech_with_quintiles <- futuretech |> 
   left_join(contact_quintiles |> select(shop, total_contacts_amount), by = "shop") |> 
-  mutate(total_contacts_amount = factor(total_contacts_amount))
+  mutate(total_contacts_amount = factor(total_contacts_amount, levels = contacts_amount_levels))
 
 lowest_sales <- futuretech |> 
   group_by(shop) |> 
@@ -155,7 +159,7 @@ value_box(
 
 ```{r}
 value_box(
-  title = "Total units sold",
+  title = "Total products sold",
   value = textOutput("total"),
   theme = "light"
 )
@@ -238,40 +242,37 @@ n_distinct(futuretech$shop) # Those two lines of code prove that one shop bought
 
 ```{r}
 #| title: Top 20 sellers
-#| fig-width: 10
 
 futuretech |> 
-  group_by(shop, product, location) |> 
+  group_by(shop, product, location, total_contacts_per_shop) |> 
   summarize(shop_sales_total = sum(units_sold), .groups = "drop") |> 
   arrange(desc(shop_sales_total)) |>
   slice_head(n = 20) |>
-  select(Shop = shop, Location = location, Product = product, Sold = shop_sales_total) |>
+  select(Shop = shop, Location = location, Product = product, Sold = shop_sales_total, Contacts = total_contacts_per_shop) |>
   gt() |> 
-  cols_align(align = "left", columns = Product) |> 
-  tab_options(table.width = "95%")
+  cols_align(align = "left", columns = Product) 
 ```
 
 ```{r}
 #| title: Bottom 20 sellers
-#| fig-width: 10
 
 futuretech |> 
-  group_by(shop, product, location) |> 
+  group_by(shop, product, location, total_contacts_per_shop) |> 
   summarize(shop_sales_total = sum(units_sold), .groups = "drop") |> 
   arrange(shop_sales_total) |>
   slice_head(n = 20) |>
-  select(Shop = shop, Location = location, Product = product, Sold = shop_sales_total) |>
+  arrange(desc(total_contacts_per_shop)) |> 
+  select(Shop = shop, Location = location, Product = product, Sold = shop_sales_total, Contacts = total_contacts_per_shop) |>
   gt() |> 
-  cols_align(align = "left", columns = Product) |> 
-  tab_options(table.width = "95%")
+  cols_align(align = "left", columns = Product)
 ```
 
 # Data
 
 ```{r}
 futuretech |> 
-  select(-c(first_contact, image_url)) |> 
-  datatable(colnames = c("date of sell" = "date_of_sell", "units sold" = "units_sold", "previous contact" = "date_of_previous_contact", "contact type" = "trigger"))
+  select(-c(first_contact, image_url, total_contacts_per_shop_per_trigger)) |> 
+  datatable(colnames = c("date of sell" = "date_of_sell", "units sold" = "units_sold", "preceding contact type" = "trigger", "preceding contact date" = "date_of_previous_contact", "total contacts per shop" = "total_contacts_per_shop"))
 ```
 
 ```{r}
@@ -321,6 +322,7 @@ output$lollipop <- renderPlot({
     geom_image(aes(image = image_url, y = total_product_sold), size = .15) +
     scale_y_continuous(expand = expansion(mult = c(0, 0.15))) + # I am using this line so that my top image is fitting to plot
     ylab("Products sold") +
+    labs(caption = "Note: Each shop sold only one type of product") +
     theme_light() +
     theme(axis.title.x = element_blank())
 })
@@ -335,8 +337,9 @@ output$campaign <- renderPlot({
   summarize(avg_campaign_shop_sales = mean(campaign_shop_sales), .groups = "drop") |> 
   ggplot(aes(x = reorder(trigger, avg_campaign_shop_sales), y = avg_campaign_shop_sales, fill = trigger)) +
   geom_col() +
-    labs(y = "Products sold", fill = "Campaign") +
-    theme_light() + 
+    labs(y = "Products sold", fill = "Campaign", caption = "Note: Averages are calculated at the shop level") +
+  scale_fill_manual(values = c("Regular Check-In" = "#ffc107" , "Other" = "#4caf50", "Engagement Booster" = "#9c27b0" , "Sales before first contact" = "#6c757d"), drop = FALSE) +
+  theme_light() + 
   theme(
         axis.title.y = element_blank(),
         axis.text.y = element_blank(),
@@ -352,10 +355,11 @@ output$contacts <- renderPlot({
   summarize(shop_sales_per_contact_amount = sum(units_sold), .groups = "drop") |> 
   group_by(total_contacts_amount) |> 
   summarize(avg_shop_sales_per_contact_amount = mean(shop_sales_per_contact_amount), .groups = "drop") |> 
-  ggplot(aes(x = total_contacts_amount, y = avg_shop_sales_per_contact_amount, fill = total_contacts_amount)) +
+  ggplot(aes(x = reorder(total_contacts_amount, avg_shop_sales_per_contact_amount), y = avg_shop_sales_per_contact_amount, fill = total_contacts_amount)) +
   geom_col() +
-    labs(y = "Products sold", fill = "How many times a shop was contacted?") +
-    theme_light() + 
+    labs(y = "Products sold", fill = "How many times a shop was contacted?", caption = "Note: Averages are calculated at the shop level") +
+  scale_fill_manual(values = c("1 to 4" = "#2196f3", "5 to 8" = "#00bcd4", "9 to 13" = "#4caf50", "14 to 20" = "#9c27b0", "21 to 27" = "#ffc107"), drop = FALSE) +
+  theme_light() + 
   theme(
         axis.title.y = element_blank(),
         axis.text.y = element_blank(),
